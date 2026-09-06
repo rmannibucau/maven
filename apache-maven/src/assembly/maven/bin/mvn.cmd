@@ -77,24 +77,64 @@ if not exist "%JAVACMD%" (
 @REM Scan the arguments for version/quiet flags so that version-only
 @REM invocations can be answered without starting Maven itself; the Java-17
 @REM gate below then doubles as the settings probe used to render the banner.
+@REM Arguments are inspected via :getFlagArg instead of "for %%a in (%*)" so
+@REM that quoted argument boundaries are preserved: both the "--" and the
+@REM "for" tokenizers split values like -Dfoo=-v into "-Dfoo" and "-v", which
+@REM would false-trigger the version fast path. The scan leaves the positional
+@REM parameters intact so the regular argument handling below (-f/--file and
+@REM Maven goal args) is unaffected.
 set "IS_VERSION_AND_EXIT="
 set "IS_SHOW_VERSION="
 set "IS_QUIET="
 set "IS_VERBOSE="
 set "IS_MAIN_OVERRIDE="
-for %%a in (%*) do (
-  if "%%~a"=="-v" set "IS_VERSION_AND_EXIT=1"
-  if "%%~a"=="--version" set "IS_VERSION_AND_EXIT=1"
-  if "%%~a"=="-V" set "IS_SHOW_VERSION=1"
-  if "%%~a"=="--show-version" set "IS_SHOW_VERSION=1"
-  if "%%~a"=="-q" set "IS_QUIET=1"
-  if "%%~a"=="--quiet" set "IS_QUIET=1"
-  if "%%~a"=="-X" set "IS_VERBOSE=1"
-  if "%%~a"=="--debug" set "IS_VERBOSE=1"
-  if "%%~a"=="--enc" set "IS_MAIN_OVERRIDE=1"
-  if "%%~a"=="--shell" set "IS_MAIN_OVERRIDE=1"
-  if "%%~a"=="--up" set "IS_MAIN_OVERRIDE=1"
-)
+set "_ARG_IDX=0"
+:parseFlags
+set /a _ARG_IDX+=1
+call :getFlagArg %_ARG_IDX% %*
+if "%_FLAG_ARG%"=="" goto parseFlagsDone
+if "%_FLAG_ARG%"=="--" goto parseFlagsDone
+if "%_FLAG_ARG%"=="-v" set "IS_VERSION_AND_EXIT=1"
+if "%_FLAG_ARG%"=="--version" set "IS_VERSION_AND_EXIT=1"
+if "%_FLAG_ARG%"=="-V" set "IS_SHOW_VERSION=1"
+if "%_FLAG_ARG%"=="--show-version" set "IS_SHOW_VERSION=1"
+if "%_FLAG_ARG%"=="-q" set "IS_QUIET=1"
+if "%_FLAG_ARG%"=="--quiet" set "IS_QUIET=1"
+if "%_FLAG_ARG%"=="-X" set "IS_VERBOSE=1"
+if "%_FLAG_ARG%"=="--debug" set "IS_VERBOSE=1"
+if "%_FLAG_ARG%"=="--enc" set "IS_MAIN_OVERRIDE=1"
+if "%_FLAG_ARG%"=="--shell" set "IS_MAIN_OVERRIDE=1"
+if "%_FLAG_ARG%"=="--up" set "IS_MAIN_OVERRIDE=1"
+@REM Compact single-dash tokens (e.g. -qv, -vX) mirror the Unix script's
+@REM -[qvVXe]* handling, but only when the part after '-' is made exclusively
+@REM of the safe chars v V q X e; otherwise (e.g. -f, -D...) the token is
+@REM skipped so property values like -Dfoo=-v never trigger the fast path.
+@REM Each set is a separate top-level line so %var% is expanded after the
+@REM previous assignment, avoiding the need for delayed expansion.
+if not "%_FLAG_ARG:~0,1%"=="-" goto parseFlags
+set "_FLAG_REST=%_FLAG_ARG:~1%"
+set "_FLAG_CHECK=%_FLAG_REST:v=%"
+set "_FLAG_CHECK=%_FLAG_CHECK:V=%"
+set "_FLAG_CHECK=%_FLAG_CHECK:q=%"
+set "_FLAG_CHECK=%_FLAG_CHECK:X=%"
+set "_FLAG_CHECK=%_FLAG_CHECK:e=%"
+if not "%_FLAG_CHECK%"=="" goto parseFlags
+if not "%_FLAG_ARG:v=%"=="%_FLAG_ARG%" set "IS_VERSION_AND_EXIT=1"
+if not "%_FLAG_ARG:V=%"=="%_FLAG_ARG%" set "IS_SHOW_VERSION=1"
+if not "%_FLAG_ARG:q=%"=="%_FLAG_ARG%" set "IS_QUIET=1"
+if not "%_FLAG_ARG:X=%"=="%_FLAG_ARG%" set "IS_VERBOSE=1"
+if not "%_FLAG_ARG:e=%"=="%_FLAG_ARG%" set "IS_MAIN_OVERRIDE=1"
+goto parseFlags
+:parseFlagsDone
+goto endFlagScan
+:getFlagArg
+@REM Shift the subroutine's own positional parameters so that %1 becomes the
+@REM argument at index %1 (the caller's _ARG_IDX); the caller's parameters are
+@REM never touched.
+for /l %%i in (1,1,%1) do shift
+set "_FLAG_ARG=%~1"
+exit /b
+:endFlagScan
 
 :chkMHome
 set "MAVEN_HOME=%~dp0"

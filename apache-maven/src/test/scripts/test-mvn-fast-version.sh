@@ -62,7 +62,6 @@ touch "$maven_home/lib/maven-core-9.9.9.jar"
 cat > "$maven_home/bin/maven.version.properties" <<'EOF'
 buildNumber=abc123def
 version=4.1.0-SNAPSHOT
-distributionId=apache-maven
 distributionShortName=Maven
 distributionName=Apache Maven
 EOF
